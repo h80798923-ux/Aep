@@ -17,19 +17,17 @@ jobs:
           libncurses-dev libssl-dev \
           libelf-dev libtool \
           xorriso grub-pc-bin grub-common \
-          cpio rsync bc
+          cpio rsync bc meson ninja-build
 
     - name: Prepare workspace
       run: |
-        mkdir -p $GITHUB_WORKSPACE/trixieos
-        mkdir -p $GITHUB_WORKSPACE/sysroot
+        mkdir -p trixieos sysroot iso/boot/grub
 
     # -------------------------
-    # Linux Kernel (LTS)
+    # Linux Kernel
     # -------------------------
     - name: Build Linux kernel
       run: |
-        cd $GITHUB_WORKSPACE
         wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.15.tar.xz
         tar -xf linux-6.6.15.tar.xz
         cd linux-6.6.15
@@ -43,16 +41,13 @@ jobs:
     # -------------------------
     - name: Build glibc
       run: |
-        cd $GITHUB_WORKSPACE
         wget https://ftp.gnu.org/gnu/libc/glibc-2.39.tar.xz
         tar -xf glibc-2.39.tar.xz
         mkdir glibc-build
         cd glibc-build
         ../glibc-2.39/configure \
           --prefix=/usr \
-          --host=x86_64-linux-gnu \
-          --enable-kernel=4.14 \
-          --with-headers=$GITHUB_WORKSPACE/linux-6.6.15/include
+          --enable-kernel=4.14
         make -j$(nproc)
         make DESTDIR=$GITHUB_WORKSPACE/sysroot install
 
@@ -61,7 +56,6 @@ jobs:
     # -------------------------
     - name: Build BusyBox
       run: |
-        cd $GITHUB_WORKSPACE
         wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
         tar -xf busybox-1.36.1.tar.bz2
         cd busybox-1.36.1
@@ -74,14 +68,10 @@ jobs:
     # -------------------------
     - name: Build systemd
       run: |
-        cd $GITHUB_WORKSPACE
         wget https://github.com/systemd/systemd/archive/refs/tags/v255.tar.gz
         tar -xf v255.tar.gz
         cd systemd-255
-        meson setup build \
-          --prefix=/usr \
-          --sysconfdir=/etc \
-          --localstatedir=/var
+        meson setup build --prefix=/usr --sysconfdir=/etc --localstatedir=/var
         ninja -C build
         DESTDIR=$GITHUB_WORKSPACE/sysroot ninja -C build install
 
@@ -90,7 +80,6 @@ jobs:
     # -------------------------
     - name: Build dbus
       run: |
-        cd $GITHUB_WORKSPACE
         wget https://dbus.freedesktop.org/releases/dbus/dbus-1.14.10.tar.xz
         tar -xf dbus-1.14.10.tar.xz
         cd dbus-1.14.10
@@ -99,49 +88,47 @@ jobs:
         make DESTDIR=$GITHUB_WORKSPACE/sysroot install
 
     # -------------------------
-    # Openbox (kurulu ama X yok)
+    # Openbox placeholder
     # -------------------------
-    - name: Install Openbox files
+    - name: Install Openbox placeholder
       run: |
-        mkdir -p $GITHUB_WORKSPACE/sysroot/usr/bin
-        echo '#!/bin/sh' > $GITHUB_WORKSPACE/sysroot/usr/bin/openbox
-        echo 'echo "Openbox installed. Xorg required."' >> $GITHUB_WORKSPACE/sysroot/usr/bin/openbox
-        chmod +x $GITHUB_WORKSPACE/sysroot/usr/bin/openbox
+        mkdir -p sysroot/usr/bin
+        echo '#!/bin/sh' > sysroot/usr/bin/openbox
+        echo 'echo "Openbox installed. Xorg required."' >> sysroot/usr/bin/openbox
+        chmod +x sysroot/usr/bin/openbox
 
     # -------------------------
     # OS identity
     # -------------------------
     - name: TrixieOS identity
       run: |
-        mkdir -p $GITHUB_WORKSPACE/sysroot/etc
-        cat > $GITHUB_WORKSPACE/sysroot/etc/os-release <<EOF
+        mkdir -p sysroot/etc
+        cat <<'EOF' > sysroot/etc/os-release
 NAME="TrixieOS"
 ID=trixieos
 VERSION="0.1"
 PRETTY_NAME="TrixieOS ProjectA"
 EOF
 
-        echo "TrixieOS ProjectA tarafından yapıldı" > \
-          $GITHUB_WORKSPACE/sysroot/etc/issue
+        echo "TrixieOS ProjectA tarafından yapıldı" > sysroot/etc/issue
 
     # -------------------------
-    # trx package system (placeholder)
+    # trx package manager
     # -------------------------
     - name: trx package system
       run: |
-        mkdir -p $GITHUB_WORKSPACE/sysroot/usr/bin
-        cat > $GITHUB_WORKSPACE/sysroot/usr/bin/trx <<'EOF'
+        cat <<'EOF' > sysroot/usr/bin/trx
 #!/bin/sh
 echo "trx package manager (TrixieOS)"
 EOF
-        chmod +x $GITHUB_WORKSPACE/sysroot/usr/bin/trx
+        chmod +x sysroot/usr/bin/trx
 
     # -------------------------
     # Initramfs
     # -------------------------
     - name: Create initramfs
       run: |
-        cd $GITHUB_WORKSPACE/sysroot
+        cd sysroot
         find . | cpio -o -H newc | gzip > ../initramfs.gz
 
     # -------------------------
@@ -149,14 +136,13 @@ EOF
     # -------------------------
     - name: Build ISO
       run: |
-        mkdir -p iso/boot/grub
         cp sysroot/vmlinuz iso/boot/vmlinuz
         cp initramfs.gz iso/boot/initramfs.gz
 
-        cat > iso/boot/grub/grub.cfg <<EOF
+        cat <<'EOF' > iso/boot/grub/grub.cfg
 set timeout=3
 menuentry "TrixieOS (Console)" {
-  echo "TrixieOS ProjectA tarafindan yapildi"
+  echo "TrixieOS ProjectA"
   linux /boot/vmlinuz quiet
   initrd /boot/initramfs.gz
 }
